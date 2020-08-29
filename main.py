@@ -16,6 +16,7 @@ import gc
 import time
 
 from pre_train import pre_train
+from train import train
 
 def main():
     # tf.logging.set_verbosity(tf.logging.INFO)
@@ -37,44 +38,40 @@ def main():
     # parser.add_argument("--max_predictions_per_seq", type=int, default=10,
     #                     help="For each sequence, predict x words at most.")
     # parser.add_argument("--weight_decay", type=float, default=0, help='Weight decay rate')
+    parser.add_argument("--mode", type=str, default='train')
     parser.add_argument("--init_checkpoint", type=str, default="", help="Initial checkpoint")
+    parser.add_argument("--pre_trained_model", type=str, default="E:/CodeSleepEatRepeat/competitions/58tech/pretrained-roberta", help="Initial checkpoint")
 
-    parser.add_argument("--mlm_probability", type=float, default=0.15, help="Input train file.")
-    parser.add_argument("--batch_size", type=int, default=32, help="Dimension of LSTM cell.")
-    parser.add_argument("--max_seq_len", type=int, default=50, help="Dimension of LSTM cell.")
-    parser.add_argument("--embedding_dim", type=int, default=64, help="Dimension of LSTM cell.")
-    parser.add_argument("--train_data_path", type=str, default="E:/CodeSleepEatRepeat/data/58tech/data/pre_train_data", help="Dimension of LSTM cell.")
+    parser.add_argument("--mlm_probability", type=float, default=0.15, help="mask prob.")
+    parser.add_argument("--batch_size", type=int, default=128, help="batch size")
+    parser.add_argument("--max_seq_len", type=int, default=50, help="max length of words in one sentence.")
+    parser.add_argument("--embedding_dim", type=int, default=128, help="Dimension of word2vec.")
+    parser.add_argument("--pre_train_data_path", type=str, default="E:/CodeSleepEatRepeat/data/58tech/data/pre_train_data", help="pre-training data path.")
     parser.add_argument("--num_hidden_layers", type=int, default=12, help="Dimension of LSTM cell.")
-    parser.add_argument("--hidden_size", type=int, default=64, help="Dimension of LSTM cell.")
+    parser.add_argument("--hidden_size", type=int, default=128, help="Dimension of LSTM cell.")
     parser.add_argument("--intermediate_size", type=int, default=32, help="Dimension of LSTM cell.")
     parser.add_argument("--num_attention_heads", type=int, default=8, help="Dimension of LSTM cell.")
     parser.add_argument("--vocab_size", type=int, default=1000, help="Dimension of LSTM cell.")
     parser.add_argument("--w2v_output", type=str, default="E:/CodeSleepEatRepeat/data/58tech/data/word2vec.txt", help="Dimension of LSTM cell.")
     parser.add_argument("--vocab_file", type=str, default="E:/CodeSleepEatRepeat/data/58tech/data/vocab_new.txt", help="Dimension of LSTM cell.")
-    parser.add_argument("--epochs", type=int, default=10, help="Dimension of LSTM cell.")
-    parser.add_argument("--checkpoints_dir", type=str, default="E:/CodeSleepEatRepeat/competitions/58tech/checkpoints", help="Dimension of LSTM cell.")
-    
+    parser.add_argument("--epochs", type=int, default=2, help="Dimension of LSTM cell.")
+    parser.add_argument("--pretrain_checkpoints_dir", type=str, default="E:/CodeSleepEatRepeat/competitions/58tech/checkpoints", help="Dimension of LSTM cell.")
+    parser.add_argument("--train_data_path", type=str, default="E:/CodeSleepEatRepeat/data/58tech/data/train_data", help="training data path.")
+    parser.add_argument("--checkpoints_dir", type=str, default="E:/CodeSleepEatRepeat/competitions/58tech/checkpoints-train", help="Dimension of LSTM cell.")
 
     args = parser.parse_args()
 
     np.random.seed(args.seed)
     tf.random.set_seed(args.seed)
     
-    pre_train(args)
+    if args.mode == 'pretrian':
+        pre_train(args)
+    elif args.mode == 'train':
+        train(args)
 
     gc.collect()
 
-    if args.init_checkpoint:
-        print("Creating the checkpoint manager")
-        checkpoint_dir = args.init_checkpoint
-        ckpt = tf.train.Checkpoint(model=model)
-        ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=5)
-
-        if ckpt_manager.latest_checkpoint:
-            ckpt.restore(ckpt_manager.latest_checkpoint)
-            print("Restored from {}".format(ckpt_manager.latest_checkpoint))
-        else:
-            print("Initializing from scratch.")
+    
 
     # total_loss = 0
     # num = 0

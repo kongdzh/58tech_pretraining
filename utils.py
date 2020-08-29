@@ -340,9 +340,9 @@ def load_word2vec(args):
     """
     word2vec_dict = load_pkl(args.w2v_output)
     vocab_dict = open(args.vocab_file, encoding='utf-8').readlines()
-    embedding_matrix = np.zeros((args.vocab_size, args.embedding_dim))
+    embedding_matrix = np.zeros((args.vocab.word_size(), args.embedding_dim))
 
-    for i, line in enumerate(vocab_dict[:args.vocab_size]):
+    for i, line in enumerate(vocab_dict[:args.vocab.word_size()]):
         word = line.strip()
         embedding_vector = word2vec_dict.get(word)
         if embedding_vector is not None:

@@ -6,10 +6,13 @@ import argparse
 
 
 class Vocab:
-    def __init__(self, vocab_file, max_size):
+    def __init__(self, vocab_file, max_size, train_data_path=None):
         self.word2id = {'<MASK>':0, '<UNK>':1, '<PAD>':2}
         self.id2word = {0:'<MASK>', 1:'<UNK>', 2:'<PAD>'}
-        self.count = 3
+        self.label2id = {}
+        self.id2label = {}
+        self.word_count = 3
+        self.label_count = 0
 
         with open(vocab_file, 'r', encoding='utf-8') as f:
             for line in f:
@@ -18,34 +21,58 @@ class Vocab:
                 if v in self.word2id:
                     raise Exception('Duplicated word in vocabulary file: %s' % v)
 
-                self.word2id[v] = self.count
-                self.id2word[self.count] = v
-                self.count += 1
-                if max_size != 0 and self.count >= max_size:
+                self.word2id[v] = self.word_count
+                self.id2word[self.word_count] = v
+                self.word_count += 1
+                if max_size != 0 and self.word_count >= max_size:
                     print("max_size of vocab was specified as %i; we now have %i words. Stopping reading."
-                          % (max_size, self.count))
+                          % (max_size, self.word_count))
                     break
 
         print("Finished constructing vocabulary of %i total words. Last word added: %s" %
-              (self.count, self.id2word[self.count - 1]))
+              (self.word_count, self.id2word[self.word_count - 1]))
+
+        with open(train_data_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                label = line.split('\t')[0]
+
+                if label in self.label2id:
+                    continue
+                self.label2id[label] = self.label_count
+                self.id2label[self.label_count] = label
+                self.label_count += 1
+
+        print("Finished constructing label of %i total labels. Last word added: %s" %
+              (self.label_count, self.id2label[self.label_count - 1]))
 
     def word_to_id(self, word):
         if word not in self.word2id:
             return self.word2id['<UNK>']
         return self.word2id[word]
 
+    def label_to_id(self, label):
+        return self.label2id[label]
+
     def id_to_word(self, word_id):
         if word_id not in self.id2word:
             raise ValueError('Id not found in vocab: %d' % word_id)
         return self.id2word[word_id]
 
-    def size(self):
-        return self.count
+    def id_to_label(self, label_id):
+        if label_id not in self.id2label:
+            raise ValueError('Label id not found: %d' % label_id)
+        return self.id2label[label_id]
+
+    def word_size(self):
+        return self.word_count
+
+    def label_size(self):
+        return self.label_count
 
 
 def mlm_generator(args, embedding_table):
 
-    train_dataset = tf.data.TextLineDataset(args.train_data_path)
+    train_dataset = tf.data.TextLineDataset(args.pre_train_data_path)
     # train_dataset = train_dataset.shuffle(1000, reshuffle_each_iteration=True).repeat()
     # i = 0
     for line in train_dataset:
@@ -81,46 +108,23 @@ def mlm_generator(args, embedding_table):
 
         yield  per_sens_embedding, per_sens_ids, per_sens_attention_masks, per_sens_label
 
-        # article = raw_record[0].numpy().decode("utf-8")
-        # abstract = raw_record[1].numpy().decode("utf-8")
 
-        # start_decoding = vocab.word_to_id(START_DECODING)
-        # stop_decoding = vocab.word_to_id(STOP_DECODING)
+def cls_generator(args, embedding_table):
+    train_dataset = tf.data.TextLineDataset(args.train_data_path)
 
-        # article_words = article.split()[:max_enc_len]
-        # enc_len = len(article_words)
-        # # 添加mark标记
-        # sample_encoder_pad_mask = [1 for _ in range(enc_len)]
+    for line in train_dataset:
+        per_sens_embedding = np.zeros((args.max_seq_len, args.embedding_dim))
+        per_sens_ids = np.zeros(args.max_seq_len)
+        per_sens_attention_masks = np.zeros(args.max_seq_len)  # huggingface transformers argument 用来分别不同的句子
+        per_sens_label_id = args.vocab.label2id[line.numpy().decode('utf-8').split('\t')[0]]
 
-        # enc_input = [vocab.word_to_id(w) for w in article_words]
-        # enc_input_extend_vocab, article_oovs = article_to_ids(article_words, vocab)
+        text = line.numpy().decode('utf-8').split('\t')[-1]
+        for word_idx, word in enumerate(text.split()[:args.max_seq_len]):
+            per_sens_attention_masks[word_idx] = 1
+            per_sens_ids[word_idx] = args.vocab.word2id[word]
+            per_sens_embedding[word_idx] = embedding_table[word]
 
-        # abstract_sentences = [""]
-        # abstract_words = abstract.split()
-        # abs_ids = [vocab.word_to_id(w) for w in abstract_words]
-        # # abs_ids_extend_vocab = abstract_to_ids(abstract_words, vocab, article_oovs)
-        # dec_input, target = get_dec_inp_targ_seqs(abs_ids, max_dec_len, start_decoding, stop_decoding)
-        # # _, target = get_dec_inp_targ_seqs(abs_ids_extend_vocab, max_dec_len, start_decoding, stop_decoding)
-
-        # dec_len = len(dec_input)
-        # # 添加mark标记
-        # sample_decoder_pad_mask = [1 for _ in range(dec_len)]
-
-        # output = {
-        #     "enc_len": enc_len,
-        #     "enc_input": enc_input,
-        #     "enc_input_extend_vocab": enc_input_extend_vocab,
-        #     "article_oovs": article_oovs,
-        #     "dec_input": dec_input,
-        #     "target": target,
-        #     "dec_len": dec_len,
-        #     "article": article,
-        #     "abstract": abstract,
-        #     "abstract_sents": abstract_sentences,
-        #     "sample_decoder_pad_mask": sample_decoder_pad_mask,
-        #     "sample_encoder_pad_mask": sample_encoder_pad_mask,
-        # }
-        # yield output
+        yield per_sens_embedding, per_sens_ids, per_sens_attention_masks, per_sens_label_id 
 
 
 def batch_generator(generator, args, embedding_table):
@@ -132,34 +136,40 @@ def batch_generator(generator, args, embedding_table):
 
 
 def batcher(args, embedding_table):
-    dataset = batch_generator(mlm_generator, args, embedding_table)
+    if args.mode == 'pretrian':
+        dataset = batch_generator(mlm_generator, args, embedding_table)
+    elif args.mode == 'train':
+        dataset = batch_generator(cls_generator, args, embedding_table)
     dataset_batch = dataset.batch(args.batch_size)
     return dataset_batch
 
 
 if __name__ == '__main__':
-    vocab = Vocab('E:/CodeSleepEatRepeat/data/58tech/data/vocab_new.txt', 50000)
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--mlm_probability", type=float, default=0.15, help="Input train file.")
     parser.add_argument("--batch_size", type=int, default=32, help="Dimension of LSTM cell.")
     parser.add_argument("--max_seq_len", type=int, default=50, help="Dimension of LSTM cell.")
-    parser.add_argument("--embedding_dim", type=int, default=64, help="Dimension of LSTM cell.")
-    parser.add_argument("--train_data_path", type=str, default="E:/CodeSleepEatRepeat/data/58tech/samplesdataset/pre_train_data", help="Dimension of LSTM cell.")
+    parser.add_argument("--embedding_dim", type=int, default=128, help="Dimension of LSTM cell.")
+    parser.add_argument("--pre_train_data_path", type=str, default="E:/CodeSleepEatRepeat/data/58tech/samplesdataset/pre_train_data", help="Dimension of LSTM cell.")
+    parser.add_argument("--train_data_path", type=str, default="E:/CodeSleepEatRepeat/data/58tech/samplesdataset/train_data", help="Dimension of LSTM cell.")
     parser.add_argument("--num_hidden_layers", type=int, default=6, help="Dimension of LSTM cell.")
-    parser.add_argument("--hidden_size", type=int, default=32, help="Dimension of LSTM cell.")
+    parser.add_argument("--hidden_size", type=int, default=128, help="Dimension of LSTM cell.")
     parser.add_argument("--intermediate_size", type=int, default=32, help="Dimension of LSTM cell.")
     parser.add_argument("--num_attention_heads", type=int, default=8, help="Dimension of LSTM cell.")
     parser.add_argument("--vocab_size", type=int, default=1000, help="Dimension of LSTM cell.")
 
     args = parser.parse_args()
 
-    args.vocab = vocab.word2id
+    vocab = Vocab('E:/CodeSleepEatRepeat/data/58tech/data/vocab_new.txt', 50000, 'E:/CodeSleepEatRepeat/data/58tech/data/train_data')
+    
+    args.vocab = vocab
 
     embs = load_pkl('E:/CodeSleepEatRepeat/data/58tech/data/word2vec.txt')
-    batches = batcher(args, embs)
+    batches = batcher(args, embs,)
 
     for batch in batches:
-        print(batch[3][1])
+        print(batch[0].shape, batch[1].shape, batch[2].shape, batch[3].shape)
         break
 
     # print(embs)

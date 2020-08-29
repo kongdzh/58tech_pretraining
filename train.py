@@ -1,6 +1,6 @@
 from batcher import Vocab, batcher
 from utils import load_pkl
-from models import Model
+from models import Model, Model_Roberta
 import tensorflow as tf 
 from transformers import RobertaConfig, TFRobertaModel, TFRobertaForMaskedLM
 
@@ -10,39 +10,41 @@ logging.disable(30)
 # @tf.function
 def train_step(model, batch, loss_func, args):
     with tf.GradientTape() as tape:
-        predictions, masks_labels = model(batch[0], batch[1], batch[2], batch[3], args)
-        loss = loss_func(masks_labels, predictions)
+        inputs, inputs_ids, attention_masks, labels = batch[0], batch[1], batch[2], batch[3]
+        predictions = model(inputs, inputs_ids, attention_masks, args)
+        loss = loss_func(labels, predictions)
     gradients = tape.gradient(loss, model.trainable_variables)
-    return gradients, loss, predictions, masks_labels
+    return gradients, loss, predictions, labels
 
-def pre_train(args):
+def train(args):
     # 构建词表对象
-    vocab = Vocab(args.vocab_file, 50000)
+    vocab = Vocab(args.vocab_file, 50000, args.train_data_path)
 
     # 取出词和id的字典
-    args.vocab = vocab.word2id
-    args.vocab_size = vocab.word_size()
+    args.vocab = vocab
 
     # 读取预训练好的embeddings
     embs = load_pkl('E:/CodeSleepEatRepeat/data/58tech/data/word2vec.txt')
-    embs['<UNK>'] = [0] * args.embedding_dim
-    embs['<MASK>'] = [0] * args.embedding_dim
-    embs['<PAD>'] = [0] * args.embedding_dim
 
     # 构建mlm的训练数据
     batches = batcher(args, embs)
 
-    # huggingface transformers 模型配置
-    config = RobertaConfig()       
-    config.num_hidden_layers = args.num_hidden_layers # 4
-    config.hidden_size = args.hidden_size # 32
-    config.intermediate_size = args.hidden_size * 4
-    config.num_attention_heads = args.num_attention_heads # 8
-    config.vocab_size = len(args.vocab) 
+    # load pretrained model
+    if args.pre_trained_model:
+        config = RobertaConfig.from_pretrained(args.pre_trained_model)
+        model_roberta = TFRobertaModel.from_pretrained(args.pre_trained_model, config=config)
+    else:
+        # huggingface transformers 模型配置
+        config = RobertaConfig() 
+        config.num_hidden_layers = args.num_hidden_layers # 12
+        config.hidden_size = args.hidden_size # 128
+        config.intermediate_size = args.hidden_size * 4
+        config.num_attention_heads = args.num_attention_heads # 8
+        config.vocab_size = args.vocab.word_size()
 
-    model_roberta = TFRobertaModel(config)
+        model_roberta = TFRobertaModel(config)
 
-    model = Model(args, model_roberta)
+    model = Model_Roberta(args, model_roberta)
     # model.summary()
     
     optimizer = tf.keras.optimizers.Nadam()
@@ -55,11 +57,11 @@ def pre_train(args):
     # ckpt = tf.train.Checkpoint(model=model)
     # ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=3)
 
-    if args.pretrain_checkpoints_dir:
+    if args.checkpoints_dir:
         print("Creating the checkpoint manager")
-        checkpoint_dir = args.pretrain_checkpoints_dir
+        checkpoint_dir = args.checkpoints_dir
         ckpt = tf.train.Checkpoint(model=model)
-        ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=3)
+        ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=5)
 
         if ckpt_manager.latest_checkpoint:
             # ckpt.restore('./checkpoints/ckpt-53')
@@ -74,12 +76,12 @@ def pre_train(args):
         
         for batch in batches:
             # inputs, inputs_ids, attention_masks, labels = batch[0], batch[1], batch[2], batch[3]
-            gradients, loss, masks_labels, predictions = train_step(model, batch, loss_func, args)
+            gradients, loss, predictions, labels = train_step(model, batch, loss_func, args)
             
             optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
             train_loss.update_state(loss)
-            train_metric.update_state(masks_labels, predictions)
+            train_metric.update_state(labels, predictions)
 
             logs = 'Epoch={},Loss:{},Accuracy:{}'
             

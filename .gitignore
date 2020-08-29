@@ -6,3 +6,10 @@ checkpoints
 
 w2v.bin
 
+checkpoints
+
+checkpoints-train
+
+pretrained-roberta
+
+sptm
